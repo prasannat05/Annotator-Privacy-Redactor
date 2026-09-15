@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Annotator &amp; Privacy Redactor</title>
+  <style>
+    :root {
+      --bg-canvas: #121316;
+      --bg-panel: #1a1c23;
+      --bg-element: #252834;
+      --bg-hover: #323646;
+      --border: #2e3241;
+      --text-main: #f0f2f5;
+      --text-muted: #8b92a5;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --danger: #ef4444;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Top Command Header */
+    header {
+      height: 48px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+    }
+
+    .app-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .app-title span {
+      color: var(--text-main);
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .tool-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--font-sans);
+      font-weight: 500;
+      transition: all 120ms ease;
+    }
+
+    .tool-btn:hover {
+      background: var(--bg-element);
+      color: var(--text-main);
+    }
+
+    .tool-btn.active {
+      background: var(--bg-element);
+      border-color: var(--border);
+      color: var(--accent);
+    }
+
+    .tool-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2;
+    }
+
+    .separator {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      margin: 0 8px;
+    }
+
+    .btn-action {
+      background: var(--bg-element);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+
+    .btn-action:hover {
+      border-color: var(--text-muted);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      color: #fff;
+    }
+
+    /* Options Strip */
+    .sub-bar {
+      height: 38px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .sub-bar label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .color-picker {
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: none;
+      cursor: pointer;
+    }
+
+    .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+    .color-picker::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+    select, input[type="range"] {
+      background: var(--bg-element);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      outline: none;
+    }
+
+    /* Main Viewport */
+    main {
+      flex: 1;
+      position: relative;
+      background-image: 
+        radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 16px 16px;
+      background-color: var(--bg-canvas);
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #stage-container {
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      display: none;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #overlay-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+
+    /* Empty paste drop-zone */
+    #dropzone {
+      position: absolute;
+      inset: 24px;
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(26, 28, 35, 0.4);
+    }
+
+    #dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .dropzone-label {
+      font-size: 14px;
+      color: var(--text-main);
+      font-weight: 500;
+    }
+
+    .dropzone-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Notifications */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 160ms ease;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="app-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+      Annotate <span>Redact</span>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="tool-btn active" data-tool="pixelate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Pixelate
+      </button>
+      <button class="tool-btn" data-tool="arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
+        Arrow
+      </button>
+      <button class="tool-btn" data-tool="rect">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Box
+      </button>
+      <button class="tool-btn" data-tool="badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/></svg>
+        Step Badge
+      </button>
+
+      <div class="separator"></div>
+
+      <button class="tool-btn" id="btn-undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+        Undo
+      </button>
+      <button class="tool-btn" id="btn-clear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        Reset
+      </button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="tool-btn btn-action" id="btn-copy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        Copy (Ctrl+C)
+      </button>
+      <button class="tool-btn btn-primary" id="btn-download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export PNG
+      </button>
+    </div>
+  </header>
+
+  <div class="sub-bar">
+    <label>
+      Color:
+      <input type="color" id="input-color" class="color-picker" value="#ef4444">
+    </label>
+    <label>
+      Stroke:
+      <select id="select-stroke">
+        <option value="2">2px</option>
+        <option value="3" selected>3px</option>
+        <option value="5">5px</option>
+      </select>
+    </label>
+    <label>
+      Pixelation Grid:
+      <input type="range" id="input-pixel-size" min="6" max="24" step="2" value="12">
+    </label>
+    <span style="margin-left: auto; font-family: var(--font-mono); font-size: 11px;" id="meta-resolution">0 x 0</span>
+  </div>
+
+  <main id="viewport">
+    <div id="dropzone">
+      <p class="dropzone-label">Paste screenshot from clipboard</p>
+      <p class="dropzone-sub">Press Ctrl+V / Cmd+V or drag an image here</p>
+      <input type="file" id="file-input" accept="image/*" style="display:none">
+      <button class="tool-btn btn-action" style="margin-top: 8px;" onclick="document.getElementById('file-input').click()">Browse Local File</button>
+    </div>
+
+    <div id="stage-container">
+      <canvas id="main-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+    </div>
+  </main>
+
+  <div id="toast">Notification</div>
+
+  <script>
+    (function () {
+      // Elements
+      const stage = document.getElementById('stage-container');
+      const dropzone = document.getElementById('dropzone');
+      const mainCanvas = document.getElementById('main-canvas');
+      const overlayCanvas = document.getElementById('overlay-canvas');
+      const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
+      const overlayCtx = overlayCanvas.getContext('2d');
+      const toastEl = document.getElementById('toast');
+      const resDisplay = document.getElementById('meta-resolution');
+
+      // Inputs
+      const toolButtons = document.querySelectorAll('[data-tool]');
+      const colorInput = document.getElementById('input-color');
+      const strokeSelect = document.getElementById('select-stroke');
+      const pixelSizeInput = document.getElementById('input-pixel-size');
+      const btnUndo = document.getElementById('btn-undo');
+      const btnClear = document.getElementById('btn-clear');
+      const btnCopy = document.getElementById('btn-copy');
+      const btnDownload = document.getElementById('btn-download');
+      const fileInput = document.getElementById('file-input');
+
+      // State
+      let activeTool = 'pixelate';
+      let strokeColor = colorInput.value;
+      let strokeWidth = parseInt(strokeSelect.value, 10);
+      let pixelSize = parseInt(pixelSizeInput.value, 10);
+      let badgeIndex = 1;
+
+      let baseImage = null;
+      let historyStack = [];
+      const MAX_HISTORY = 20;
+
+      let isDrawing = false;
+      let startX = 0;
+      let startY = 0;
+
+      // --- Utility: Toast Message ---
+      function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        setTimeout(() => toastEl.classList.remove('show'), 2200);
+      }
+
+      // --- Setup Canvases ---
+      function loadImage(img) {
+        baseImage = img;
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+
+        mainCanvas.width = w;
+        mainCanvas.height = h;
+        overlayCanvas.width = w;
+        overlayCanvas.height = h;
+
+        mainCtx.drawImage(img, 0, 0);
+        resDisplay.textContent = `${w} × ${h}px`;
+
+        dropzone.style.display = 'none';
+        stage.style.display = 'block';
+
+        historyStack = [];
+        badgeIndex = 1;
+        saveState();
+      }
+
+      function saveState() {
+        if (historyStack.length >= MAX_HISTORY) {
+          historyStack.shift();
+        }
+        historyStack.push(mainCtx.getImageData(0, 0, mainCanvas.width, mainCanvas.height));
+      }
+
+      function undo() {
+        if (historyStack.length > 1) {
+          historyStack.pop(); // discard current state
+          const prevState = historyStack[historyStack.length - 1];
+          mainCtx.putImageData(prevState, 0, 0);
+          if (badgeIndex > 1) badgeIndex--;
+          toast('Undo applied');
+        } else {
+          toast('Nothing to undo');
+        }
+      }
+
+      // --- Clipboard & File Listeners ---
+      window.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let item of items) {
+          if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              const img = new Image();
+              img.onload = () => loadImage(img);
+              img.src = evt.target.result;
+            };
+            reader.readAsDataURL(blob);
+            toast('Screenshot loaded');
+            break;
+          }
+        }
+      });
+
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+
+      window.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              const img = new Image();
+              img.onload = () => loadImage(img);
+              img.src = evt.target.result;
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const img = new Image();
+            img.onload = () => loadImage(img);
+            img.src = evt.target.result;
+          };
+          reader.readAsDataURL(e.target.files[0]);
+        }
+      });
+
+      // Global keyboard shortcuts
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          undo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+          if (baseImage) {
+            e.preventDefault();
+            copyToClipboard();
+          }
+        }
+      });
+
+      // --- Interaction Tools Handling ---
+      toolButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          toolButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeTool = btn.dataset.tool;
+        });
+      });
+
+      colorInput.addEventListener('input', (e) => strokeColor = e.target.value);
+      strokeSelect.addEventListener('change', (e) => strokeWidth = parseInt(e.target.value, 10));
+      pixelSizeInput.addEventListener('input', (e) => pixelSize = parseInt(e.target.value, 10));
+
+      btnUndo.addEventListener('click', undo);
+      btnClear.addEventListener('click', () => {
+        if (baseImage) {
+          mainCtx.drawImage(baseImage, 0, 0);
+          historyStack = [];
+          badgeIndex = 1;
+          saveState();
+          toast('Canvas reset to original');
+        }
+      });
+
+      // --- Drawing Logic ---
+      function getCanvasCoords(e) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const scaleX = mainCanvas.width / rect.width;
+        const scaleY = mainCanvas.height / rect.height;
+        return {
+          x: Math.round((e.clientX - rect.left) * scaleX),
+          y: Math.round((e.clientY - rect.top) * scaleY)
+        };
+      }
+
+      mainCanvas.addEventListener('mousedown', (e) => {
+        if (!baseImage) return;
+        isDrawing = true;
+        const coords = getCanvasCoords(e);
+        startX = coords.x;
+        startY = coords.y;
+
+        if (activeTool === 'badge') {
+          drawBadge(mainCtx, startX, startY, badgeIndex++);
+          saveState();
+          isDrawing = false;
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const coords = getCanvasCoords(e);
+        const currentX = coords.x;
+        const currentY = coords.y;
+
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        const w = currentX - startX;
+        const h = currentY - startY;
+
+        if (activeTool === 'pixelate') {
+          overlayCtx.strokeStyle = '#3b82f6';
+          overlayCtx.lineWidth = 1;
+          overlayCtx.setLineDash([4, 4]);
+          overlayCtx.strokeRect(startX, startY, w, h);
+          overlayCtx.setLineDash([]);
+        } else if (activeTool === 'rect') {
+          overlayCtx.strokeStyle = strokeColor;
+          overlayCtx.lineWidth = strokeWidth;
+          overlayCtx.strokeRect(startX, startY, w, h);
+        } else if (activeTool === 'arrow') {
+          overlayCtx.strokeStyle = strokeColor;
+          overlayCtx.fillStyle = strokeColor;
+          overlayCtx.lineWidth = strokeWidth;
+          drawArrow(overlayCtx, startX, startY, currentX, currentY);
+        }
+      });
+
+      window.addEventListener('mouseup', (e) => {
+        if (!isDrawing) return;
+        isDrawing = false;
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        const coords = getCanvasCoords(e);
+        const endX = coords.x;
+        const endY = coords.y;
+
+        const x = Math.min(startX, endX);
+        const y = Math.min(startY, endY);
+        const w = Math.abs(endX - startX);
+        const h = Math.abs(endY - startY);
+
+        if (w === 0 || h === 0) return;
+
+        if (activeTool === 'pixelate') {
+          applyPixelation(x, y, w, h, pixelSize);
+          saveState();
+        } else if (activeTool === 'rect') {
+          mainCtx.strokeStyle = strokeColor;
+          mainCtx.lineWidth = strokeWidth;
+          mainCtx.strokeRect(startX, startY, endX - startX, endY - startY);
+          saveState();
+        } else if (activeTool === 'arrow') {
+          mainCtx.strokeStyle = strokeColor;
+          mainCtx.fillStyle = strokeColor;
+          mainCtx.lineWidth = strokeWidth;
+          drawArrow(mainCtx, startX, startY, endX - startY ? endX : endX, endY);
+          saveState();
+        }
+      });
+
+      // --- Rendering Shapes & Filters ---
+      function applyPixelation(x, y, w, h, size) {
+        const imgData = mainCtx.getImageData(x, y, w, h);
+        const data = imgData.data;
+
+        for (let py = 0; py < h; py += size) {
+          for (let px = 0; px < w; px += size) {
+            let r = 0, g = 0, b = 0, a = 0;
+            let count = 0;
+
+            // Sample region color average
+            for (let dy = 0; dy < size; dy++) {
+              for (let dx = 0; dx < size; dx++) {
+                const nx = px + dx;
+                const ny = py + dy;
+                if (nx < w && ny < h) {
+                  const idx = (ny * w + nx) * 4;
+                  r += data[idx];
+                  g += data[idx + 1];
+                  b += data[idx + 2];
+                  a += data[idx + 3];
+                  count++;
+                }
+              }
+            }
+
+            r = Math.floor(r / count);
+            g = Math.floor(g / count);
+            b = Math.floor(b / count);
+            a = Math.floor(a / count);
+
+            // Stamp block
+            for (let dy = 0; dy < size; dy++) {
+              for (let dx = 0; dx < size; dx++) {
+                const nx = px + dx;
+                const ny = py + dy;
+                if (nx < w && ny < h) {
+                  const idx = (ny * w + nx) * 4;
+                  data[idx] = r;
+                  data[idx + 1] = g;
+                  data[idx + 2] = b;
+                  data[idx + 3] = a;
+                }
+              }
+            }
+          }
+        }
+        mainCtx.putImageData(imgData, x, y);
+      }
+
+      function drawArrow(ctx, fromX, fromY, toX, toY) {
+        const headLength = 12 + strokeWidth * 2;
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(
+          toX - headLength * Math.cos(angle - Math.PI / 6),
+          toY - headLength * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          toX - headLength * Math.cos(angle + Math.PI / 6),
+          toY - headLength * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawBadge(ctx, x, y, num) {
+        const radius = 12 + strokeWidth;
+        ctx.save();
+        ctx.fillStyle = strokeColor;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${radius}px ${getComputedStyle(document.body).getPropertyValue('--font-mono')}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(num, x, y);
+        ctx.restore();
+      }
+
+      // --- Export & Async Clipboard API ---
+      function copyToClipboard() {
+        mainCanvas.toBlob((blob) => {
+          if (!blob) {
+            toast('Failed to export canvas');
+            return;
+          }
+          if (navigator.clipboard && navigator.clipboard.write) {
+            const item = new ClipboardItem({ 'image/png': blob });
+            navigator.clipboard.write([item]).then(() => {
+              toast('Copied to clipboard');
+            }).catch(() => {
+              toast('Clipboard permission denied');
+            });
+          } else {
+            toast('Clipboard API not supported');
+          }
+        }, 'image/png');
+      }
+
+      btnCopy.addEventListener('click', copyToClipboard);
+
+      btnDownload.addEventListener('click', () => {
+        if (!baseImage) return;
+        const link = document.createElement('a');
+        link.download = `annotation-${Date.now()}.png`;
+        link.href = mainCanvas.toDataURL('image/png');
+        link.click();
+        toast('Downloaded image');
+      });
+    })();
+  </script>
+</body>
+</html>
