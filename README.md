@@ -1,6 +1,6 @@
 # Annotator Privacy Redactor
 
-A tool for redacting sensitive information from annotated documents while preserving the integrity of the annotation data.
+Tool for redacting sensitive information from annotated documents while preserving the integrity of the annotation data.
 
 ## Features
 
